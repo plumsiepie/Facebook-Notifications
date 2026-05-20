@@ -35,7 +35,7 @@ function setupAlarm() {
 }
 
 chrome.alarms.onAlarm.addListener(function(alarm) {
-  if (alarm.name === 'pollNotifications') {
+  if (alarm.name === 'pollNotifications' || alarm.name === 'pollNow') {
     pollNotifications();
   }
 });

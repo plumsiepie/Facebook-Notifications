@@ -33,23 +33,38 @@ function renderStatus(status, notifCount) {
   el.className = '';
 }
 
+function renderNotifs(notifs) {
+  const div = document.getElementById('notifications-div');
+  div.innerHTML = '';
+  for (let i = 0; i < notifs.length; i++) {
+    div.innerHTML += postTemplate(notifs[i]);
+  }
+  $('.post').click(function() {
+    const guidOfClickedNotif = $(this).attr('id');
+    chrome.storage.local.get(['seenNotifsGuids'], function(data) {
+      const seenNotifsGuids = data.seenNotifsGuids || [];
+      seenNotifsGuids.push(guidOfClickedNotif);
+      chrome.storage.local.set({ seenNotifsGuids });
+    });
+  });
+}
+
 $(document).ready(function() {
   chrome.storage.local.get(['notifs', 'status'], function(result) {
     const notifs = result.notifs || [];
     renderStatus(result.status || null, notifs.length);
+    renderNotifs(notifs);
+  });
 
-    for (let i = 0; i < notifs.length; i++) {
-      document.getElementById('notifications-div').innerHTML += postTemplate(notifs[i]);
-    }
-
-    $('.post').click(function() {
-      const guidOfClickedNotif = $(this).attr('id');
-      chrome.storage.local.get(['seenNotifsGuids'], function(data) {
-        const seenNotifsGuids = data.seenNotifsGuids || [];
-        seenNotifsGuids.push(guidOfClickedNotif);
-        chrome.storage.local.set({ seenNotifsGuids });
+  // Update popup reactively whenever any poll completes
+  chrome.storage.onChanged.addListener(function(changes) {
+    if ('status' in changes || 'notifs' in changes) {
+      chrome.storage.local.get(['notifs', 'status'], function(result) {
+        const notifs = result.notifs || [];
+        renderStatus(result.status || null, notifs.length);
+        renderNotifs(notifs);
       });
-    });
+    }
   });
 
   document.getElementById('check-now').addEventListener('click', function() {
@@ -58,49 +73,18 @@ $(document).ready(function() {
     document.getElementById('status-text').textContent = 'Checking…';
     document.getElementById('status-text').className = '';
 
-    function refreshUI() {
-      chrome.storage.local.get(['notifs', 'status'], function(result) {
-        const notifs = result.notifs || [];
-        renderStatus(result.status || null, notifs.length);
-        const div = document.getElementById('notifications-div');
-        div.innerHTML = '';
-        for (let i = 0; i < notifs.length; i++) {
-          div.innerHTML += postTemplate(notifs[i]);
-        }
-        $('.post').click(function() {
-          const guidOfClickedNotif = $(this).attr('id');
-          chrome.storage.local.get(['seenNotifsGuids'], function(data) {
-            const seenNotifsGuids = data.seenNotifsGuids || [];
-            seenNotifsGuids.push(guidOfClickedNotif);
-            chrome.storage.local.set({ seenNotifsGuids });
-          });
-        });
-        btn.disabled = false;
-      });
-    }
+    // Alarms reliably wake the service worker; sendMessage does not
+    chrome.alarms.create('pollNow', { when: Date.now() + 100 });
 
-    const fallback = setTimeout(function() {
-      chrome.storage.onChanged.removeListener(storageListener);
-      refreshUI();
-    }, 15000);
+    const timeout = setTimeout(function() { btn.disabled = false; }, 15000);
 
-    function storageListener(changes) {
+    function btnListener(changes) {
       if ('status' in changes) {
-        clearTimeout(fallback);
-        chrome.storage.onChanged.removeListener(storageListener);
-        refreshUI();
-      }
-    }
-    chrome.storage.onChanged.addListener(storageListener);
-
-    chrome.runtime.sendMessage({ action: 'pollNow' }, function() {
-      if (chrome.runtime.lastError) {
-        clearTimeout(fallback);
-        chrome.storage.onChanged.removeListener(storageListener);
-        document.getElementById('status-text').textContent = 'Error: ' + chrome.runtime.lastError.message;
-        document.getElementById('status-text').className = 'error';
+        clearTimeout(timeout);
+        chrome.storage.onChanged.removeListener(btnListener);
         btn.disabled = false;
       }
-    });
+    }
+    chrome.storage.onChanged.addListener(btnListener);
   });
 });
