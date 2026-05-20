@@ -57,17 +57,16 @@ $(document).ready(function() {
     btn.disabled = true;
     document.getElementById('status-text').textContent = 'Checking…';
     document.getElementById('status-text').className = '';
-    chrome.runtime.sendMessage({ action: 'pollNow' }, function() {
+
+    function refreshUI() {
       chrome.storage.local.get(['notifs', 'status'], function(result) {
         const notifs = result.notifs || [];
         renderStatus(result.status || null, notifs.length);
-
         const div = document.getElementById('notifications-div');
         div.innerHTML = '';
         for (let i = 0; i < notifs.length; i++) {
           div.innerHTML += postTemplate(notifs[i]);
         }
-
         $('.post').click(function() {
           const guidOfClickedNotif = $(this).attr('id');
           chrome.storage.local.get(['seenNotifsGuids'], function(data) {
@@ -76,9 +75,32 @@ $(document).ready(function() {
             chrome.storage.local.set({ seenNotifsGuids });
           });
         });
-
         btn.disabled = false;
       });
+    }
+
+    const fallback = setTimeout(function() {
+      chrome.storage.onChanged.removeListener(storageListener);
+      refreshUI();
+    }, 15000);
+
+    function storageListener(changes) {
+      if ('status' in changes) {
+        clearTimeout(fallback);
+        chrome.storage.onChanged.removeListener(storageListener);
+        refreshUI();
+      }
+    }
+    chrome.storage.onChanged.addListener(storageListener);
+
+    chrome.runtime.sendMessage({ action: 'pollNow' }, function() {
+      if (chrome.runtime.lastError) {
+        clearTimeout(fallback);
+        chrome.storage.onChanged.removeListener(storageListener);
+        document.getElementById('status-text').textContent = 'Error: ' + chrome.runtime.lastError.message;
+        document.getElementById('status-text').className = 'error';
+        btn.disabled = false;
+      }
     });
   });
 });
