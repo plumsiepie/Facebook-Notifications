@@ -56,7 +56,7 @@ async function pollNotifications() {
   const cUserCookie = cookies.find(c => c.name === 'c_user');
 
   if (!cUserCookie) {
-    await setStorage({ fbRssUrl: null });
+    await setStorage({ fbRssUrl: null, status: { loggedIn: false, lastChecked: Date.now(), error: null } });
     return;
   }
 
@@ -75,6 +75,7 @@ async function pollNotifications() {
       }
     } catch (e) {
       console.error('Failed to fetch notifications page:', e);
+      await setStorage({ status: { loggedIn: true, lastChecked: Date.now(), error: e.message } });
       return;
     }
   }
@@ -118,11 +119,24 @@ async function pollNotifications() {
       }
     }
 
-    await setStorage({ notifs, seenNotifsGuids, notifiedNotifsGuids });
+    await setStorage({
+      notifs,
+      seenNotifsGuids,
+      notifiedNotifsGuids,
+      status: { loggedIn: true, lastChecked: Date.now(), error: null }
+    });
   } catch (e) {
     console.error('Failed to fetch RSS feed:', e);
+    await setStorage({ status: { loggedIn: true, lastChecked: Date.now(), error: e.message } });
   }
 }
+
+chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (message.action === 'pollNow') {
+    pollNotifications().then(() => sendResponse({ done: true }));
+    return true;
+  }
+});
 
 function markSeen(guidAndLink) {
   const guid = guidAndLink.split('^')[0];
