@@ -1,3 +1,27 @@
+function parseRSS(text) {
+  const notifs = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRegex.exec(text)) !== null) {
+    const block = match[1];
+    const getTag = tag => {
+      const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+      return m ? m[1].trim() : '';
+    };
+    notifs.push({
+      guid: getTag('guid').split('/')[2] || '',
+      title: getTag('title'),
+      link: getTag('link'),
+      description: getTag('description'),
+      pubDate: getTag('pubDate'),
+      author: getTag('author'),
+      seen: 0,
+      notified: 0
+    });
+  }
+  return notifs;
+}
+
 chrome.runtime.onInstalled.addListener(setupAlarm);
 chrome.runtime.onStartup.addListener(setupAlarm);
 
@@ -60,20 +84,7 @@ async function pollNotifications() {
   try {
     const response = await fetch(fbRssUrl);
     const text = await response.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, 'text/xml');
-    const items = xml.querySelectorAll('item');
-
-    const notifs = Array.from(items).map(item => ({
-      guid: item.querySelector('guid')?.textContent?.split('/')[2] || '',
-      title: item.querySelector('title')?.textContent || '',
-      link: item.querySelector('link')?.textContent || '',
-      description: item.querySelector('description')?.textContent || '',
-      pubDate: item.querySelector('pubDate')?.textContent || '',
-      author: item.querySelector('author')?.textContent || '',
-      seen: 0,
-      notified: 0
-    }));
+    const notifs = parseRSS(text);
 
     const data = await getStorage(['seenNotifsGuids', 'notifiedNotifsGuids']);
     let seenNotifsGuids = data.seenNotifsGuids || [];
